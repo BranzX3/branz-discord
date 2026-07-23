@@ -1,0 +1,8 @@
+name: BranzDiscord
+version: '${version}'
+main: dev.branzx.discord.DiscordPlugin
+api-version: '26.2'
+depend: [BranzWallet]
+softdepend: [LuckPerms]
+author: BranzX3
+description: Discord storefront front-end — links accounts and serves balances through the central WalletApi.

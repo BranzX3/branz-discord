@@ -1,0 +1,19 @@
+# BranzDiscord — the Discord storefront front-end.
+#
+# It runs inside the game server and talks to the shop through the central
+# BranzWallet plugin (WalletApi), so there is no duplicated currency logic.
+
+discord:
+  # On a multi-backend network, enable this on EXACTLY ONE server. Two servers
+  # connecting the same bot token would double every reply.
+  enabled: true
+
+  # Bot token and application id from the Discord Developer Portal.
+  token: ""
+
+  # The storefront guild. Slash commands register here instantly.
+  guild-id: ""
+
+  # Role granted after a successful /link (the "Linked" role). Optional —
+  # leave blank to skip. The bot's role must sit above it in the hierarchy.
+  linked-role-id: ""
