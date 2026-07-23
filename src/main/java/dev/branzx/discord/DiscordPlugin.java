@@ -1,5 +1,7 @@
 package dev.branzx.discord;
 
+import dev.branzx.discord.feed.Feed;
+import dev.branzx.discord.feed.NotificationListener;
 import dev.branzx.discord.rank.RankCatalog;
 import dev.branzx.discord.rank.RankService;
 import dev.branzx.discord.topup.TopupCatalog;
@@ -63,6 +65,13 @@ public final class DiscordPlugin extends JavaPlugin {
                     .addEventListeners(listener)
                     .build();
             startWebhook(wallet, listener);
+
+            // Community feed: post game moments here and broadcast rank buys.
+            Feed feed = new Feed(jda, getConfig().getString("feed.channel-id", ""));
+            listener.setFeed(feed);
+            getServer().getPluginManager().registerEvents(
+                    new NotificationListener(this, jda, wallet, feed), this);
+
             getLogger().info("Discord storefront front-end starting...");
         } catch (Exception e) {
             getLogger().severe("Failed to start the Discord bot: " + e.getMessage());

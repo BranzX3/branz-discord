@@ -18,6 +18,11 @@ discord:
   # leave blank to skip. The bot's role must sit above it in the hierarchy.
   linked-role-id: "1529768957647655003"
 
+# Community feed. Game moments (streak milestones, rank purchases, …) are posted
+# here. Blank = disabled. Use a dedicated channel to keep #announcements clean.
+feed:
+  channel-id: "1529850521924669672"
+
 # Purchasable ranks. Each buys a LuckPerms group (granted in-game, even to
 # offline players) for its price in Credit, and optionally assigns a Discord
 # role. duration-days: 0 = permanent, a positive value = a timed subscription.

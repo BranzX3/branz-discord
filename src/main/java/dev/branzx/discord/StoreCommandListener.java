@@ -1,5 +1,6 @@
 package dev.branzx.discord;
 
+import dev.branzx.discord.feed.Feed;
 import dev.branzx.discord.rank.RankCatalog;
 import dev.branzx.discord.rank.RankDefinition;
 import dev.branzx.discord.rank.RankService;
@@ -48,6 +49,7 @@ public final class StoreCommandListener extends ListenerAdapter {
     private final RankService rankService;
     private final TopupCatalog topupCatalog;
     private volatile WebhookServer webhookServer;
+    private volatile Feed feed;
 
     public StoreCommandListener(Plugin plugin, WalletApi wallet, String guildId,
                                 String linkedRoleId, RankCatalog catalog, RankService rankService,
@@ -64,6 +66,11 @@ public final class StoreCommandListener extends ListenerAdapter {
     /** Wired after the webhook starts so /topup can register buyers for a DM on settlement. */
     public void setWebhookServer(WebhookServer webhookServer) {
         this.webhookServer = webhookServer;
+    }
+
+    /** Wired after JDA connects so a rank purchase can be announced to the feed. */
+    public void setFeed(Feed feed) {
+        this.feed = feed;
     }
 
     @Override
@@ -259,8 +266,15 @@ public final class StoreCommandListener extends ListenerAdapter {
 
         String transactionId = "RANK:" + owner + ":" + rankId + ":" + nonce;
         RankService.Outcome outcome = rankService.purchase(owner, rank, transactionId);
-        if (outcome.status() == RankService.Status.SUCCESS && rank.hasDiscordRole()) {
-            grantRole(event.getGuild(), event.getUser().getId(), rank.discordRoleId());
+        if (outcome.status() == RankService.Status.SUCCESS) {
+            if (rank.hasDiscordRole()) {
+                grantRole(event.getGuild(), event.getUser().getId(), rank.discordRoleId());
+            }
+            Feed f = feed;
+            if (f != null) {
+                f.post("🎉 ยศใหม่!", event.getUser().getAsMention()
+                        + " เพิ่งอัปเป็นยศ **" + rank.display() + "** — ยินดีด้วย!");
+            }
         }
         event.getHook().editOriginal(outcome.message()).setEmbeds().setComponents().queue();
     }
