@@ -11,12 +11,12 @@ discord:
   # Bot token and application id from the Discord Developer Portal.
   token: ""
 
-  # The storefront guild. Slash commands register here instantly.
-  guild-id: ""
+  # The storefront guild (watersodeep's server). Slash commands register here instantly.
+  guild-id: "1528288647110201495"
 
   # Role granted after a successful /link (the "Linked" role). Optional —
   # leave blank to skip. The bot's role must sit above it in the hierarchy.
-  linked-role-id: ""
+  linked-role-id: "1529768957647655003"
 
 # Purchasable ranks. Each buys a LuckPerms group (granted in-game, even to
 # offline players) for its price in Credit, and optionally assigns a Discord
@@ -27,13 +27,13 @@ ranks:
     display: "VIP"
     price: 100
     luckperms-group: "vip"
-    discord-role-id: ""
+    discord-role-id: "1529846116236005478"
     duration-days: 0
   mvp:
     display: "MVP"
     price: 250
     luckperms-group: "mvp"
-    discord-role-id: ""
+    discord-role-id: "1529846126767902851"
     duration-days: 0
 
 # Real-money top-up. /topup creates a pending order; a payment webhook settles
