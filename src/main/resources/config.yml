@@ -17,3 +17,21 @@ discord:
   # Role granted after a successful /link (the "Linked" role). Optional —
   # leave blank to skip. The bot's role must sit above it in the hierarchy.
   linked-role-id: ""
+
+# Purchasable ranks. Each buys a LuckPerms group (granted in-game, even to
+# offline players) for its price in Credit, and optionally assigns a Discord
+# role. duration-days: 0 = permanent, a positive value = a timed subscription.
+# Requires the LuckPerms plugin. Prices are examples — tune freely.
+ranks:
+  vip:
+    display: "VIP"
+    price: 100
+    luckperms-group: "vip"
+    discord-role-id: ""
+    duration-days: 0
+  mvp:
+    display: "MVP"
+    price: 250
+    luckperms-group: "mvp"
+    discord-role-id: ""
+    duration-days: 0

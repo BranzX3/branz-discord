@@ -20,7 +20,14 @@ when the community outgrows a pure storefront.
 | `/link <code>` | ✅ live | Redeems a 6-digit code from `/wallet link` in-game (`WalletApi.redeemLinkCode`) and grants the Linked role. |
 | `/balance` | ✅ live | Shows the caller's Coin and Credit (`WalletApi.coins` / `credits`). |
 | `/topup` | 🚧 stub | Will create a PromptPay/TrueMoney charge and grant Credit on a verified webhook. |
-| `/buyrank` | 🚧 stub | Will spend Credit and grant a LuckPerms group + Discord role. |
+| `/buyrank <rank>` | ✅ live | Confirm-button purchase: spends Credit (idempotent), grants a LuckPerms group (permanent or timed, offline-safe), assigns the Discord role. Auto-refunds if the grant fails. Requires LuckPerms. |
+
+## Ranks
+
+Define products in the `ranks` section of `config.yml` — each maps to a LuckPerms
+group, a Credit price, an optional Discord role, and `duration-days` (0 =
+permanent). The buyer confirms via a button before any Credit is spent; a
+repeated click reuses the same transaction id, so the charge can never double.
 
 ## Setup
 

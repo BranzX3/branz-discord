@@ -1,8 +1,12 @@
 package dev.branzx.discord;
 
+import dev.branzx.discord.rank.RankCatalog;
+import dev.branzx.discord.rank.RankService;
 import dev.branzx.wallet.api.WalletApi;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.luckperms.api.LuckPerms;
+import net.luckperms.api.LuckPermsProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -40,12 +44,17 @@ public final class DiscordPlugin extends JavaPlugin {
         }
 
         String linkedRoleId = getConfig().getString("discord.linked-role-id", "").trim();
+
+        RankCatalog catalog = RankCatalog.from(getConfig().getConfigurationSection("ranks"));
+        RankService rankService = new RankService(wallet, resolveLuckPerms(), getLogger());
+
         try {
             // createLight drops member/message caches the storefront never
             // needs. build() connects asynchronously, so the server keeps
             // booting while the gateway comes up.
             jda = JDABuilder.createLight(token)
-                    .addEventListeners(new StoreCommandListener(this, wallet, guildId, linkedRoleId))
+                    .addEventListeners(new StoreCommandListener(
+                            this, wallet, guildId, linkedRoleId, catalog, rankService))
                     .build();
             getLogger().info("Discord storefront front-end starting...");
         } catch (Exception e) {
@@ -71,6 +80,23 @@ public final class DiscordPlugin extends JavaPlugin {
             return registration == null ? null : registration.getProvider();
         } catch (Throwable t) {
             getLogger().severe("Could not resolve the BranzWallet service: " + t);
+            return null;
+        }
+    }
+
+    /**
+     * Resolves LuckPerms if installed. It is a soft dependency: without it rank
+     * sales are simply unavailable, so a null return is handled gracefully.
+     */
+    private LuckPerms resolveLuckPerms() {
+        if (getServer().getPluginManager().getPlugin("LuckPerms") == null) {
+            getLogger().warning("LuckPerms not found; /buyrank will report ranks as unavailable.");
+            return null;
+        }
+        try {
+            return LuckPermsProvider.get();
+        } catch (Throwable t) {
+            getLogger().warning("Could not resolve the LuckPerms API: " + t);
             return null;
         }
     }

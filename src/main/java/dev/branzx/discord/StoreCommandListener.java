@@ -1,15 +1,24 @@
 package dev.branzx.discord;
 
+import dev.branzx.discord.rank.RankCatalog;
+import dev.branzx.discord.rank.RankDefinition;
+import dev.branzx.discord.rank.RankService;
 import dev.branzx.wallet.api.WalletApi;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.interactions.commands.build.OptionData;
+import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.dv8tion.jda.api.interactions.components.ActionRow;
+import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,25 +26,32 @@ import java.awt.Color;
 import java.util.UUID;
 
 /**
- * Handles the storefront slash commands. Every currency operation goes through
- * the injected {@link WalletApi}; nothing here touches the database directly.
+ * Handles the storefront slash commands and the rank confirm buttons. Every
+ * currency operation goes through the injected {@link WalletApi}, and rank
+ * grants through {@link RankService}; nothing here touches the database.
  *
- * <p>The wallet calls block on a database, so each command acknowledges first
- * ({@code deferReply}) and then edits the reply once the work is done — well
- * within Discord's 3-second window.
+ * <p>The wallet/rank calls block, so each interaction acknowledges first
+ * ({@code deferReply}/{@code deferEdit}) and edits the reply once done.
  */
 public final class StoreCommandListener extends ListenerAdapter {
+
+    private static final Color BRAND = new Color(0x2ecc71);
 
     private final Plugin plugin;
     private final WalletApi wallet;
     private final String guildId;
     private final String linkedRoleId;
+    private final RankCatalog catalog;
+    private final RankService rankService;
 
-    public StoreCommandListener(Plugin plugin, WalletApi wallet, String guildId, String linkedRoleId) {
+    public StoreCommandListener(Plugin plugin, WalletApi wallet, String guildId,
+                                String linkedRoleId, RankCatalog catalog, RankService rankService) {
         this.plugin = plugin;
         this.wallet = wallet;
         this.guildId = guildId;
         this.linkedRoleId = linkedRoleId == null || linkedRoleId.isBlank() ? null : linkedRoleId;
+        this.catalog = catalog;
+        this.rankService = rankService;
     }
 
     @Override
@@ -45,12 +61,22 @@ public final class StoreCommandListener extends ListenerAdapter {
             plugin.getLogger().warning("Bot is not in guild " + guildId + "; commands not registered.");
             return;
         }
+
+        OptionData rankOption = new OptionData(OptionType.STRING, "rank", "ยศที่ต้องการซื้อ", true);
+        for (RankDefinition rank : catalog.all()) {
+            rankOption.addChoice(rank.display() + " — " + rank.price() + " Credit", rank.id());
+        }
+        SlashCommandData buyrank = Commands.slash("buyrank", "ซื้อยศด้วย Credit");
+        if (!catalog.isEmpty()) {
+            buyrank.addOptions(rankOption);
+        }
+
         guild.updateCommands().addCommands(
                 Commands.slash("link", "เชื่อมบัญชี Discord กับ Minecraft ด้วยรหัสจาก /wallet link ในเกม")
                         .addOption(OptionType.STRING, "code", "รหัส 6 หลักที่ได้จากในเกม", true),
                 Commands.slash("balance", "เช็คยอด Coin และ Credit ของคุณ"),
                 Commands.slash("topup", "เติม Credit ด้วยเงินจริง (เร็ว ๆ นี้)"),
-                Commands.slash("buyrank", "ซื้อยศด้วย Credit (เร็ว ๆ นี้)")
+                buyrank
         ).queue();
         plugin.getLogger().info("Registered storefront commands in guild " + guild.getName() + ".");
     }
@@ -67,7 +93,7 @@ public final class StoreCommandListener extends ListenerAdapter {
     }
 
     private void onLink(SlashCommandInteractionEvent event) {
-        String code = event.getOption("code", "", net.dv8tion.jda.api.interactions.commands.OptionMapping::getAsString).trim();
+        String code = event.getOption("code", "", OptionMapping::getAsString).trim();
         if (!code.matches("\\d{6}")) {
             event.reply("❌ รหัสต้องเป็นตัวเลข 6 หลัก").setEphemeral(true).queue();
             return;
@@ -79,7 +105,7 @@ public final class StoreCommandListener extends ListenerAdapter {
                     "❌ รหัสไม่ถูกต้องหรือหมดอายุแล้ว — พิมพ์ `/wallet link` ในเกมเพื่อขอรหัสใหม่").queue();
             return;
         }
-        grantLinkedRole(event);
+        grantRole(event.getGuild(), event.getUser().getId(), linkedRoleId);
         event.getHook().editOriginal(
                 "✅ เชื่อมบัญชีสำเร็จ! เช็คยอดด้วย `/balance` และเติม/ซื้อได้แล้ว").queue();
     }
@@ -88,17 +114,14 @@ public final class StoreCommandListener extends ListenerAdapter {
         event.deferReply(true).queue();
         UUID owner = wallet.linkedUuid(event.getUser().getId());
         if (owner == null) {
-            event.getHook().editOriginal(
-                    "❌ คุณยังไม่ได้เชื่อมบัญชี — พิมพ์ `/wallet link` ในเกม แล้ว `/link <รหัส>` ที่นี่").queue();
+            event.getHook().editOriginal(notLinked()).queue();
             return;
         }
-        long coins = wallet.coins(owner);
-        long credits = wallet.credits(owner);
         var embed = new EmbedBuilder()
                 .setTitle("💰 ยอดคงเหลือของคุณ")
-                .setColor(new Color(0x2ecc71))
-                .addField("🪙 Coins", String.format("%,d", coins), true)
-                .addField("💎 Credits", String.format("%,d", credits), true)
+                .setColor(BRAND)
+                .addField("🪙 Coins", String.format("%,d", wallet.coins(owner)), true)
+                .addField("💎 Credits", String.format("%,d", wallet.credits(owner)), true)
                 .setFooter("MC: " + owner)
                 .build();
         event.getHook().editOriginalEmbeds(embed).queue();
@@ -107,7 +130,7 @@ public final class StoreCommandListener extends ListenerAdapter {
     private void onTopup(SlashCommandInteractionEvent event) {
         event.deferReply(true).queue();
         if (wallet.linkedUuid(event.getUser().getId()) == null) {
-            event.getHook().editOriginal("❌ กรุณาเชื่อมบัญชีก่อนด้วย `/link`").queue();
+            event.getHook().editOriginal(notLinked()).queue();
             return;
         }
         event.getHook().editOriginal(
@@ -116,21 +139,93 @@ public final class StoreCommandListener extends ListenerAdapter {
 
     private void onBuyrank(SlashCommandInteractionEvent event) {
         event.deferReply(true).queue();
-        if (wallet.linkedUuid(event.getUser().getId()) == null) {
-            event.getHook().editOriginal("❌ กรุณาเชื่อมบัญชีก่อนด้วย `/link`").queue();
+        UUID owner = wallet.linkedUuid(event.getUser().getId());
+        if (owner == null) {
+            event.getHook().editOriginal(notLinked()).queue();
             return;
         }
-        event.getHook().editOriginal(
-                "🚧 ระบบยศกำลังพัฒนา — จะเปิดขายเมื่อเชื่อม LuckPerms เสร็จ").queue();
+        if (!rankService.available() || catalog.isEmpty()) {
+            event.getHook().editOriginal("🚧 ระบบยศยังไม่พร้อมใช้งาน").queue();
+            return;
+        }
+        OptionMapping option = event.getOption("rank");
+        RankDefinition rank = option == null ? null : catalog.get(option.getAsString());
+        if (rank == null) {
+            event.getHook().editOriginal("❌ เลือกยศไม่ถูกต้อง").queue();
+            return;
+        }
+
+        long credits = wallet.credits(owner);
+        String duration = rank.isTimed() ? rank.durationDays() + " วัน" : "ถาวร";
+        var embed = new EmbedBuilder()
+                .setTitle("🛒 ยืนยันการซื้อยศ")
+                .setColor(BRAND)
+                .addField("ยศ", rank.display(), true)
+                .addField("ระยะเวลา", duration, true)
+                .addField("ราคา", String.format("%,d Credit", rank.price()), true)
+                .addField("Credit คงเหลือ", String.format("%,d", credits), false)
+                .build();
+
+        // The nonce ties the confirm button to one purchase intent: clicking it
+        // twice reuses the same transaction id, so the Credit debit is idempotent.
+        String nonce = Long.toString(System.currentTimeMillis());
+        Button confirm = Button.success("buyrank:confirm:" + rank.id() + ":" + nonce,
+                "ยืนยันซื้อ (" + rank.price() + " Credit)");
+        Button cancel = Button.secondary("buyrank:cancel", "ยกเลิก");
+        event.getHook().editOriginalEmbeds(embed).setComponents(ActionRow.of(confirm, cancel)).queue();
     }
 
-    /** Best-effort Linked role grant; a failure must not fail the link itself. */
-    private void grantLinkedRole(SlashCommandInteractionEvent event) {
-        if (linkedRoleId == null || event.getGuild() == null) return;
-        Role role = event.getGuild().getRoleById(linkedRoleId);
-        if (role == null) return;
-        event.getGuild()
-                .addRoleToMember(UserSnowflake.fromId(event.getUser().getId()), role)
+    @Override
+    public void onButtonInteraction(@NotNull ButtonInteractionEvent event) {
+        String id = event.getComponentId();
+        if (!id.startsWith("buyrank:")) {
+            return;
+        }
+        event.deferEdit().queue();
+
+        if (id.equals("buyrank:cancel")) {
+            event.getHook().editOriginal("ยกเลิกแล้ว").setEmbeds().setComponents().queue();
+            return;
+        }
+
+        String[] parts = id.split(":");
+        if (parts.length < 4) {
+            event.getHook().editOriginal("❌ คำขอไม่ถูกต้อง").setEmbeds().setComponents().queue();
+            return;
+        }
+        String rankId = parts[2];
+        String nonce = parts[3];
+
+        UUID owner = wallet.linkedUuid(event.getUser().getId());
+        RankDefinition rank = catalog.get(rankId);
+        if (owner == null || rank == null) {
+            event.getHook().editOriginal(owner == null ? notLinked() : "❌ ยศไม่ถูกต้อง")
+                    .setEmbeds().setComponents().queue();
+            return;
+        }
+
+        String transactionId = "RANK:" + owner + ":" + rankId + ":" + nonce;
+        RankService.Outcome outcome = rankService.purchase(owner, rank, transactionId);
+        if (outcome.status() == RankService.Status.SUCCESS && rank.hasDiscordRole()) {
+            grantRole(event.getGuild(), event.getUser().getId(), rank.discordRoleId());
+        }
+        event.getHook().editOriginal(outcome.message()).setEmbeds().setComponents().queue();
+    }
+
+    /** Best-effort role grant; a failure must not fail the operation it follows. */
+    private void grantRole(Guild guild, String userId, String roleId) {
+        if (guild == null || roleId == null || roleId.isBlank()) {
+            return;
+        }
+        Role role = guild.getRoleById(roleId);
+        if (role == null) {
+            return;
+        }
+        guild.addRoleToMember(UserSnowflake.fromId(userId), role)
                 .queue(null, error -> { /* missing permission / role too high — ignore */ });
+    }
+
+    private static String notLinked() {
+        return "❌ คุณยังไม่ได้เชื่อมบัญชี — พิมพ์ `/wallet link` ในเกม แล้ว `/link <รหัส>` ที่นี่";
     }
 }
