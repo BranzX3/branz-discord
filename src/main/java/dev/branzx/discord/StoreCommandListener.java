@@ -3,6 +3,9 @@ package dev.branzx.discord;
 import dev.branzx.discord.rank.RankCatalog;
 import dev.branzx.discord.rank.RankDefinition;
 import dev.branzx.discord.rank.RankService;
+import dev.branzx.discord.topup.TopupCatalog;
+import dev.branzx.discord.topup.TopupPackage;
+import dev.branzx.discord.topup.WebhookServer;
 import dev.branzx.wallet.api.WalletApi;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Guild;
@@ -43,15 +46,24 @@ public final class StoreCommandListener extends ListenerAdapter {
     private final String linkedRoleId;
     private final RankCatalog catalog;
     private final RankService rankService;
+    private final TopupCatalog topupCatalog;
+    private volatile WebhookServer webhookServer;
 
     public StoreCommandListener(Plugin plugin, WalletApi wallet, String guildId,
-                                String linkedRoleId, RankCatalog catalog, RankService rankService) {
+                                String linkedRoleId, RankCatalog catalog, RankService rankService,
+                                TopupCatalog topupCatalog) {
         this.plugin = plugin;
         this.wallet = wallet;
         this.guildId = guildId;
         this.linkedRoleId = linkedRoleId == null || linkedRoleId.isBlank() ? null : linkedRoleId;
         this.catalog = catalog;
         this.rankService = rankService;
+        this.topupCatalog = topupCatalog;
+    }
+
+    /** Wired after the webhook starts so /topup can register buyers for a DM on settlement. */
+    public void setWebhookServer(WebhookServer webhookServer) {
+        this.webhookServer = webhookServer;
     }
 
     @Override
@@ -71,11 +83,20 @@ public final class StoreCommandListener extends ListenerAdapter {
             buyrank.addOptions(rankOption);
         }
 
+        OptionData packageOption = new OptionData(OptionType.STRING, "package", "แพ็กเกจที่ต้องการเติม", true);
+        for (TopupPackage pkg : topupCatalog.all()) {
+            packageOption.addChoice(pkg.display() + " — ฿" + pkg.baht() + " → " + pkg.credits() + " Credit", pkg.id());
+        }
+        SlashCommandData topup = Commands.slash("topup", "เติม Credit ด้วยเงินจริง");
+        if (!topupCatalog.isEmpty()) {
+            topup.addOptions(packageOption);
+        }
+
         guild.updateCommands().addCommands(
                 Commands.slash("link", "เชื่อมบัญชี Discord กับ Minecraft ด้วยรหัสจาก /wallet link ในเกม")
                         .addOption(OptionType.STRING, "code", "รหัส 6 หลักที่ได้จากในเกม", true),
                 Commands.slash("balance", "เช็คยอด Coin และ Credit ของคุณ"),
-                Commands.slash("topup", "เติม Credit ด้วยเงินจริง (เร็ว ๆ นี้)"),
+                topup,
                 buyrank
         ).queue();
         plugin.getLogger().info("Registered storefront commands in guild " + guild.getName() + ".");
@@ -129,12 +150,44 @@ public final class StoreCommandListener extends ListenerAdapter {
 
     private void onTopup(SlashCommandInteractionEvent event) {
         event.deferReply(true).queue();
-        if (wallet.linkedUuid(event.getUser().getId()) == null) {
+        UUID owner = wallet.linkedUuid(event.getUser().getId());
+        if (owner == null) {
             event.getHook().editOriginal(notLinked()).queue();
             return;
         }
-        event.getHook().editOriginal(
-                "🚧 ระบบเติมเงินกำลังจะเปิด — ยังไม่ได้เชื่อม payment gateway").queue();
+        if (topupCatalog.isEmpty()) {
+            event.getHook().editOriginal("🚧 ยังไม่มีแพ็กเกจเติมเงิน").queue();
+            return;
+        }
+        OptionMapping option = event.getOption("package");
+        TopupPackage pkg = option == null ? null : topupCatalog.get(option.getAsString());
+        if (pkg == null) {
+            event.getHook().editOriginal("❌ เลือกแพ็กเกจไม่ถูกต้อง").queue();
+            return;
+        }
+
+        String reference = "TOPUP-" + UUID.randomUUID();
+        if (!wallet.createTopup(reference, owner, pkg.credits(), pkg.amountSatang(), pkg.id())) {
+            event.getHook().editOriginal("⚠️ สร้างรายการไม่สำเร็จ ลองใหม่อีกครั้ง").queue();
+            return;
+        }
+        // Remember the buyer so the webhook can DM them when payment settles.
+        if (webhookServer != null) {
+            webhookServer.expectSettlement(reference, event.getUser().getId());
+        }
+
+        String instructions = plugin.getConfig().getString("topup.instructions", "");
+        var embed = new EmbedBuilder()
+                .setTitle("💳 เติม Credit — " + pkg.display())
+                .setColor(BRAND)
+                .addField("ยอดชำระ", "฿" + String.format("%,d", pkg.baht()), true)
+                .addField("จะได้รับ", String.format("%,d Credit", pkg.credits()), true)
+                .addField("Reference", "`" + reference + "`", false)
+                .setFooter("Credit จะเข้าอัตโนมัติเมื่อระบบยืนยันการชำระ")
+                .build();
+        String body = instructions.isBlank() ? "" : "\n" + instructions;
+        event.getHook().editOriginal("📌 สร้างรายการแล้ว โปรดชำระเงินตามยอด" + body)
+                .setEmbeds(embed).queue();
     }
 
     private void onBuyrank(SlashCommandInteractionEvent event) {

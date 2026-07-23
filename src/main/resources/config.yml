@@ -35,3 +35,26 @@ ranks:
     luckperms-group: "mvp"
     discord-role-id: ""
     duration-days: 0
+
+# Real-money top-up. /topup creates a pending order; a payment webhook settles
+# it and grants Credit. Actual charging is done by your payment provider — the
+# bot only creates the order and reacts to the confirmation callback.
+topup:
+  packages:
+    starter: { display: "Starter", baht: 20,  credits: 20 }
+    basic:   { display: "Basic",   baht: 50,  credits: 55 }
+    value:   { display: "Value",   baht: 100, credits: 115 }
+    mega:    { display: "Mega",    baht: 300, credits: 360 }
+    ultra:   { display: "Ultra",   baht: 500, credits: 625 }
+
+  webhook:
+    # An HTTP endpoint that settles orders when the gateway confirms payment.
+    enabled: true
+    port: 8787
+    path: "/webhook/topup"
+    # Shared secret. The caller must send X-Signature = hex HMAC-SHA256(body).
+    # Change this, keep it private, and expose the port only to the gateway.
+    secret: "change-me"
+
+  # Optional payment instructions shown to the buyer with the order reference.
+  instructions: "โอนตามยอด แล้วแนบสลิป + reference ที่ห้อง support หรือรอระบบยืนยันอัตโนมัติ"

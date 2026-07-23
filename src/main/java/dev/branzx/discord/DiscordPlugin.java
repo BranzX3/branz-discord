@@ -2,6 +2,8 @@ package dev.branzx.discord;
 
 import dev.branzx.discord.rank.RankCatalog;
 import dev.branzx.discord.rank.RankService;
+import dev.branzx.discord.topup.TopupCatalog;
+import dev.branzx.discord.topup.WebhookServer;
 import dev.branzx.wallet.api.WalletApi;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
@@ -20,6 +22,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class DiscordPlugin extends JavaPlugin {
 
     private JDA jda;
+    private WebhookServer webhookServer;
 
     @Override
     public void onEnable() {
@@ -47,15 +50,19 @@ public final class DiscordPlugin extends JavaPlugin {
 
         RankCatalog catalog = RankCatalog.from(getConfig().getConfigurationSection("ranks"));
         RankService rankService = new RankService(wallet, resolveLuckPerms(), getLogger());
+        TopupCatalog topupCatalog = TopupCatalog.from(
+                getConfig().getConfigurationSection("topup.packages"));
 
         try {
             // createLight drops member/message caches the storefront never
             // needs. build() connects asynchronously, so the server keeps
             // booting while the gateway comes up.
+            StoreCommandListener listener = new StoreCommandListener(
+                    this, wallet, guildId, linkedRoleId, catalog, rankService, topupCatalog);
             jda = JDABuilder.createLight(token)
-                    .addEventListeners(new StoreCommandListener(
-                            this, wallet, guildId, linkedRoleId, catalog, rankService))
+                    .addEventListeners(listener)
                     .build();
+            startWebhook(wallet, listener);
             getLogger().info("Discord storefront front-end starting...");
         } catch (Exception e) {
             getLogger().severe("Failed to start the Discord bot: " + e.getMessage());
@@ -64,8 +71,33 @@ public final class DiscordPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (webhookServer != null) {
+            webhookServer.stop();
+        }
         if (jda != null) {
             jda.shutdownNow();
+        }
+    }
+
+    /** Starts the top-up settlement webhook if enabled, and wires it to /topup. */
+    private void startWebhook(WalletApi wallet, StoreCommandListener listener) {
+        if (!getConfig().getBoolean("topup.webhook.enabled", false)) {
+            return;
+        }
+        int port = getConfig().getInt("topup.webhook.port", 8787);
+        String path = getConfig().getString("topup.webhook.path", "/webhook/topup");
+        String secret = getConfig().getString("topup.webhook.secret", "");
+        if (secret.isBlank() || secret.equals("change-me")) {
+            getLogger().warning("topup.webhook.secret is unset/default; the webhook is disabled "
+                    + "until you set a private secret.");
+            return;
+        }
+        try {
+            webhookServer = new WebhookServer(port, path, secret, wallet, jda, getLogger());
+            webhookServer.start();
+            listener.setWebhookServer(webhookServer);
+        } catch (Exception e) {
+            getLogger().severe("Failed to start the top-up webhook: " + e.getMessage());
         }
     }
 
