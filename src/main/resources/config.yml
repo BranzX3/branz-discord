@@ -46,6 +46,12 @@ onboard:
     - label: "🎮 LFG"
       role-id: "1529853922536198184"
 
+# Support tickets. /ticketpanel posts a button that opens a private thread with
+# staff. The bot needs Create Private Threads + Manage Threads in that channel.
+tickets:
+  enabled: true
+  staff-role-id: "1529769002295890089"   # 🛡️ Staff — pinged in each ticket
+
 # Purchasable ranks. Each buys a LuckPerms group (granted in-game, even to
 # offline players) for its price in Credit, and optionally assigns a Discord
 # role. duration-days: 0 = permanent, a positive value = a timed subscription.

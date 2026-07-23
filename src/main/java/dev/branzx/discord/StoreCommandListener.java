@@ -2,6 +2,7 @@ package dev.branzx.discord;
 
 import dev.branzx.discord.feed.Feed;
 import dev.branzx.discord.onboard.OnboardingListener;
+import dev.branzx.discord.ticket.TicketListener;
 import dev.branzx.discord.rank.RankCatalog;
 import dev.branzx.discord.rank.RankDefinition;
 import dev.branzx.discord.rank.RankService;
@@ -54,6 +55,7 @@ public final class StoreCommandListener extends ListenerAdapter {
     private volatile WebhookServer webhookServer;
     private volatile Feed feed;
     private volatile OnboardingListener onboarding;
+    private volatile TicketListener tickets;
 
     public StoreCommandListener(Plugin plugin, WalletApi wallet, String guildId,
                                 String linkedRoleId, RankCatalog catalog, RankService rankService,
@@ -79,6 +81,10 @@ public final class StoreCommandListener extends ListenerAdapter {
 
     public void setOnboarding(OnboardingListener onboarding) {
         this.onboarding = onboarding;
+    }
+
+    public void setTickets(TicketListener tickets) {
+        this.tickets = tickets;
     }
 
     @Override
@@ -109,6 +115,8 @@ public final class StoreCommandListener extends ListenerAdapter {
 
         SlashCommandData rolepanel = Commands.slash("rolepanel", "โพสต์ panel เลือก role (แอดมิน)")
                 .setDefaultPermissions(DefaultMemberPermissions.enabledFor(Permission.MANAGE_ROLES));
+        SlashCommandData ticketpanel = Commands.slash("ticketpanel", "โพสต์ panel เปิด ticket (แอดมิน)")
+                .setDefaultPermissions(DefaultMemberPermissions.enabledFor(Permission.MANAGE_CHANNEL));
 
         guild.updateCommands().addCommands(
                 Commands.slash("link", "เชื่อมบัญชี Discord กับ Minecraft ด้วยรหัสจาก /wallet link ในเกม")
@@ -116,7 +124,8 @@ public final class StoreCommandListener extends ListenerAdapter {
                 Commands.slash("balance", "เช็คยอด Coin และ Credit ของคุณ"),
                 topup,
                 buyrank,
-                rolepanel
+                rolepanel,
+                ticketpanel
         ).queue();
         plugin.getLogger().info("Registered storefront commands in guild " + guild.getName() + ".");
     }
@@ -134,6 +143,14 @@ public final class StoreCommandListener extends ListenerAdapter {
                     o.postPanel(event);
                 } else {
                     event.reply("🚧 ระบบ role ยังไม่พร้อม").setEphemeral(true).queue();
+                }
+            }
+            case "ticketpanel" -> {
+                TicketListener t = tickets;
+                if (t != null) {
+                    t.postPanel(event);
+                } else {
+                    event.reply("🚧 ระบบ ticket ปิดอยู่").setEphemeral(true).queue();
                 }
             }
             default -> { /* unknown command, ignore */ }

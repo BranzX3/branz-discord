@@ -5,6 +5,7 @@ import dev.branzx.discord.feed.LeaderboardService;
 import dev.branzx.discord.feed.NotificationListener;
 import dev.branzx.discord.onboard.OnboardingListener;
 import dev.branzx.discord.rank.RankCatalog;
+import dev.branzx.discord.ticket.TicketListener;
 import dev.branzx.discord.rank.RankService;
 import dev.branzx.discord.topup.TopupCatalog;
 import dev.branzx.discord.topup.WebhookServer;
@@ -72,13 +73,21 @@ public final class DiscordPlugin extends JavaPlugin {
             OnboardingListener onboarding = buildOnboarding();
             listener.setOnboarding(onboarding);
 
+            TicketListener tickets = getConfig().getBoolean("tickets.enabled", false)
+                    ? new TicketListener(getConfig().getString("tickets.staff-role-id", "")) : null;
+            listener.setTickets(tickets);
+
             JDABuilder builder = JDABuilder.createLight(token);
             // The join-welcome needs the privileged Server Members Intent; only
             // request it when the feature is on, so a portal without it still boots.
             if (getConfig().getBoolean("onboard.welcome.enabled", false)) {
                 builder.enableIntents(GatewayIntent.GUILD_MEMBERS);
             }
-            jda = builder.addEventListeners(listener, onboarding).build();
+            builder.addEventListeners(listener, onboarding);
+            if (tickets != null) {
+                builder.addEventListeners(tickets);
+            }
+            jda = builder.build();
             startWebhook(wallet, listener);
 
             // Community feed: post game moments here and broadcast rank buys.
