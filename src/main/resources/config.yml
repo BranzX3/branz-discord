@@ -23,6 +23,14 @@ discord:
 feed:
   channel-id: "1529850521924669672"
 
+# Auto leaderboard. Posts the top players by Coins and refreshes one message in
+# place on a timer. Blank channel-id or enabled:false disables it.
+leaderboard:
+  enabled: true
+  channel-id: "1529768946746785894"
+  refresh-minutes: 60
+  top-n: 10
+
 # Purchasable ranks. Each buys a LuckPerms group (granted in-game, even to
 # offline players) for its price in Credit, and optionally assigns a Discord
 # role. duration-days: 0 = permanent, a positive value = a timed subscription.

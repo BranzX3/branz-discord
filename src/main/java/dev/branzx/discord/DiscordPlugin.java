@@ -1,6 +1,7 @@
 package dev.branzx.discord;
 
 import dev.branzx.discord.feed.Feed;
+import dev.branzx.discord.feed.LeaderboardService;
 import dev.branzx.discord.feed.NotificationListener;
 import dev.branzx.discord.rank.RankCatalog;
 import dev.branzx.discord.rank.RankService;
@@ -71,6 +72,13 @@ public final class DiscordPlugin extends JavaPlugin {
             listener.setFeed(feed);
             getServer().getPluginManager().registerEvents(
                     new NotificationListener(this, jda, wallet, feed), this);
+
+            if (getConfig().getBoolean("leaderboard.enabled", false)) {
+                new LeaderboardService(this, jda, wallet,
+                        getConfig().getString("leaderboard.channel-id", ""),
+                        getConfig().getInt("leaderboard.top-n", 10))
+                        .start(getConfig().getInt("leaderboard.refresh-minutes", 60));
+            }
 
             getLogger().info("Discord storefront front-end starting...");
         } catch (Exception e) {
