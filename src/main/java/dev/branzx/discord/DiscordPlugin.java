@@ -3,6 +3,7 @@ package dev.branzx.discord;
 import dev.branzx.discord.feed.Feed;
 import dev.branzx.discord.feed.LeaderboardService;
 import dev.branzx.discord.feed.NotificationListener;
+import dev.branzx.discord.onboard.OnboardingListener;
 import dev.branzx.discord.rank.RankCatalog;
 import dev.branzx.discord.rank.RankService;
 import dev.branzx.discord.topup.TopupCatalog;
@@ -10,9 +11,14 @@ import dev.branzx.discord.topup.WebhookServer;
 import dev.branzx.wallet.api.WalletApi;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.LuckPermsProvider;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * The Discord storefront front-end. It runs inside the game server and reaches
@@ -62,9 +68,17 @@ public final class DiscordPlugin extends JavaPlugin {
             // booting while the gateway comes up.
             StoreCommandListener listener = new StoreCommandListener(
                     this, wallet, guildId, linkedRoleId, catalog, rankService, topupCatalog);
-            jda = JDABuilder.createLight(token)
-                    .addEventListeners(listener)
-                    .build();
+
+            OnboardingListener onboarding = buildOnboarding();
+            listener.setOnboarding(onboarding);
+
+            JDABuilder builder = JDABuilder.createLight(token);
+            // The join-welcome needs the privileged Server Members Intent; only
+            // request it when the feature is on, so a portal without it still boots.
+            if (getConfig().getBoolean("onboard.welcome.enabled", false)) {
+                builder.enableIntents(GatewayIntent.GUILD_MEMBERS);
+            }
+            jda = builder.addEventListeners(listener, onboarding).build();
             startWebhook(wallet, listener);
 
             // Community feed: post game moments here and broadcast rank buys.
@@ -94,6 +108,24 @@ public final class DiscordPlugin extends JavaPlugin {
         if (jda != null) {
             jda.shutdownNow();
         }
+    }
+
+    /** Builds the onboarding listener (welcome + self-role panel) from config. */
+    private OnboardingListener buildOnboarding() {
+        List<OnboardingListener.SelfRole> selfRoles = new ArrayList<>();
+        for (Map<?, ?> entry : getConfig().getMapList("onboard.self-roles")) {
+            Object label = entry.get("label");
+            Object roleId = entry.get("role-id");
+            if (label != null && roleId != null) {
+                selfRoles.add(new OnboardingListener.SelfRole(
+                        String.valueOf(label), String.valueOf(roleId)));
+            }
+        }
+        return new OnboardingListener(this,
+                getConfig().getBoolean("onboard.welcome.enabled", false),
+                getConfig().getString("onboard.welcome.channel-id", ""),
+                getConfig().getBoolean("onboard.welcome.dm", true),
+                selfRoles);
     }
 
     /** Starts the top-up settlement webhook if enabled, and wires it to /topup. */

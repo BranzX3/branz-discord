@@ -31,6 +31,21 @@ leaderboard:
   refresh-minutes: 60
   top-n: 10
 
+# Onboarding: welcome new members and let them self-assign roles.
+onboard:
+  welcome:
+    # Requires enabling "Server Members Intent" in the Discord Developer Portal.
+    # Left off so a deployment without that intent still boots.
+    enabled: false
+    channel-id: "1529768773295280188"   # #welcome
+    dm: true
+  # Roles offered by /rolepanel for members to toggle themselves.
+  self-roles:
+    - label: "🔔 Announcement Ping"
+      role-id: "1529853909797966024"
+    - label: "🎮 LFG"
+      role-id: "1529853922536198184"
+
 # Purchasable ranks. Each buys a LuckPerms group (granted in-game, even to
 # offline players) for its price in Credit, and optionally assigns a Discord
 # role. duration-days: 0 = permanent, a positive value = a timed subscription.

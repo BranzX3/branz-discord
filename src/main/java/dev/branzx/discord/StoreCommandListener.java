@@ -1,6 +1,7 @@
 package dev.branzx.discord;
 
 import dev.branzx.discord.feed.Feed;
+import dev.branzx.discord.onboard.OnboardingListener;
 import dev.branzx.discord.rank.RankCatalog;
 import dev.branzx.discord.rank.RankDefinition;
 import dev.branzx.discord.rank.RankService;
@@ -9,6 +10,7 @@ import dev.branzx.discord.topup.TopupPackage;
 import dev.branzx.discord.topup.WebhookServer;
 import dev.branzx.wallet.api.WalletApi;
 import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.UserSnowflake;
@@ -16,6 +18,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -50,6 +53,7 @@ public final class StoreCommandListener extends ListenerAdapter {
     private final TopupCatalog topupCatalog;
     private volatile WebhookServer webhookServer;
     private volatile Feed feed;
+    private volatile OnboardingListener onboarding;
 
     public StoreCommandListener(Plugin plugin, WalletApi wallet, String guildId,
                                 String linkedRoleId, RankCatalog catalog, RankService rankService,
@@ -71,6 +75,10 @@ public final class StoreCommandListener extends ListenerAdapter {
     /** Wired after JDA connects so a rank purchase can be announced to the feed. */
     public void setFeed(Feed feed) {
         this.feed = feed;
+    }
+
+    public void setOnboarding(OnboardingListener onboarding) {
+        this.onboarding = onboarding;
     }
 
     @Override
@@ -99,12 +107,16 @@ public final class StoreCommandListener extends ListenerAdapter {
             topup.addOptions(packageOption);
         }
 
+        SlashCommandData rolepanel = Commands.slash("rolepanel", "โพสต์ panel เลือก role (แอดมิน)")
+                .setDefaultPermissions(DefaultMemberPermissions.enabledFor(Permission.MANAGE_ROLES));
+
         guild.updateCommands().addCommands(
                 Commands.slash("link", "เชื่อมบัญชี Discord กับ Minecraft ด้วยรหัสจาก /wallet link ในเกม")
                         .addOption(OptionType.STRING, "code", "รหัส 6 หลักที่ได้จากในเกม", true),
                 Commands.slash("balance", "เช็คยอด Coin และ Credit ของคุณ"),
                 topup,
-                buyrank
+                buyrank,
+                rolepanel
         ).queue();
         plugin.getLogger().info("Registered storefront commands in guild " + guild.getName() + ".");
     }
@@ -116,6 +128,14 @@ public final class StoreCommandListener extends ListenerAdapter {
             case "balance" -> onBalance(event);
             case "topup" -> onTopup(event);
             case "buyrank" -> onBuyrank(event);
+            case "rolepanel" -> {
+                OnboardingListener o = onboarding;
+                if (o != null) {
+                    o.postPanel(event);
+                } else {
+                    event.reply("🚧 ระบบ role ยังไม่พร้อม").setEphemeral(true).queue();
+                }
+            }
             default -> { /* unknown command, ignore */ }
         }
     }
